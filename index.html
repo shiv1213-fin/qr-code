@@ -82,6 +82,13 @@
     .qr-pulse { animation: pulse-ring 2s ease-out infinite; }
 
     .char-counter { font-size: 0.7rem; }
+
+    /* Spinner */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner { animation: spin 0.8s linear infinite; }
+
+    /* Refine textarea */
+    #refined-prompt-edit { min-height: 160px; }
   </style>
 </head>
 <body class="text-white">
@@ -314,6 +321,32 @@
         </div>
       </section>
 
+      <!-- ── API Key (optional) ────────────────────────────── -->
+      <div class="mb-6">
+        <button type="button" id="api-key-toggle"
+          class="flex items-center gap-2 text-xs text-white/40 hover:text-white/70 transition-colors w-full mb-2">
+          <span id="api-key-indicator" class="text-white/25">○</span>
+          <span>Claude API Key <span class="text-white/25">(optional — enables AI prompt refinement)</span></span>
+          <span id="api-key-chevron" class="ml-auto">▸</span>
+        </button>
+        <div id="api-key-panel" class="hidden rounded-xl border border-white/10 bg-white/5 p-4">
+          <p class="text-xs text-white/40 mb-3">Your key is stored in your browser only and never sent anywhere except Anthropic's API.</p>
+          <div class="flex gap-2">
+            <input type="password" id="api-key-input" placeholder="sk-ant-..."
+              class="glow-input flex-1 rounded-lg px-3 py-2 bg-black/20 border border-white/10 text-white text-sm placeholder-white/20 focus:border-violet-500" />
+            <button type="button" id="api-key-save"
+              class="px-4 py-2 rounded-lg text-sm font-semibold bg-violet-600 hover:bg-violet-500 transition-all">
+              Save
+            </button>
+            <button type="button" id="api-key-clear"
+              class="px-3 py-2 rounded-lg text-sm text-white/40 hover:text-white/70 hover:bg-white/10 transition-all">
+              Clear
+            </button>
+          </div>
+          <p id="api-key-status" class="text-xs mt-2 hidden"></p>
+        </div>
+      </div>
+
       <!-- Submit -->
       <button type="submit" id="submit-btn"
         class="w-full py-4 rounded-xl font-bold text-base bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 active:scale-95 transition-all shadow-lg shadow-violet-900/40">
@@ -321,6 +354,63 @@
       </button>
 
     </form>
+  </div>
+
+  <!-- ── REFINE VIEW ────────────────────────────────────────────── -->
+  <div id="view-refine" class="view hidden max-w-3xl mx-auto px-4 py-8">
+
+    <!-- Loading state -->
+    <div id="refine-loading" class="text-center py-20">
+      <div class="inline-flex flex-col items-center gap-4 text-white/60">
+        <div class="w-10 h-10 border-2 border-violet-500 border-t-transparent rounded-full spinner"></div>
+        <span class="text-lg font-medium">Refining your prompt with Claude...</span>
+        <span class="text-sm text-white/30">This takes just a second</span>
+      </div>
+    </div>
+
+    <!-- Content state (shown after API returns) -->
+    <div id="refine-content" class="hidden">
+      <button id="refine-back-btn" class="flex items-center gap-2 text-sm text-white/50 hover:text-white mb-6 transition-colors">
+        ← Back to form
+      </button>
+
+      <div class="mb-6">
+        <h2 class="text-2xl font-bold bg-gradient-to-r from-violet-300 to-indigo-300 bg-clip-text text-transparent mb-1">
+          AI-Refined Prompt
+        </h2>
+        <p class="text-white/50 text-sm">Claude suggested this improved version. Edit it freely, then generate your QR.</p>
+      </div>
+
+      <!-- Refined prompt (editable) -->
+      <div class="rounded-2xl border border-violet-500/30 bg-violet-500/5 p-5 mb-4">
+        <div class="text-xs font-semibold text-violet-400 uppercase tracking-widest mb-3">Refined Prompt</div>
+        <textarea id="refined-prompt-edit" rows="8"
+          class="w-full bg-transparent text-white/90 text-sm leading-relaxed resize-none focus:outline-none placeholder-white/20 glow-input border-0 p-0"></textarea>
+      </div>
+
+      <!-- Original prompt (collapsed) -->
+      <details class="mb-6 rounded-xl border border-white/10 bg-white/5 overflow-hidden">
+        <summary class="px-5 py-3 text-xs font-semibold text-white/30 uppercase tracking-widest cursor-pointer hover:text-white/50 transition-colors">
+          Original prompt (click to view)
+        </summary>
+        <p id="original-prompt-preview" class="px-5 pb-4 text-white/40 text-sm leading-relaxed font-mono whitespace-pre-wrap"></p>
+      </details>
+
+      <!-- Error state -->
+      <div id="refine-error" class="hidden mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300"></div>
+
+      <div class="flex gap-3">
+        <button id="use-refined-btn"
+          class="flex-1 py-4 rounded-xl font-bold text-base bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 active:scale-95 transition-all shadow-lg shadow-violet-900/40">
+          Use This Prompt → Generate QR
+        </button>
+        <button id="use-original-btn"
+          class="px-5 py-4 rounded-xl font-semibold text-sm bg-white/10 hover:bg-white/20 active:scale-95 transition-all">
+          Use Original
+        </button>
+      </div>
+    </div>
+
   </div>
 
   <!-- ── RESULT VIEW ─────────────────────────────────────────── -->
@@ -411,8 +501,12 @@
     let selectedAI = null;
     let generatedURL = '';
     let generatedPrompt = '';
+    let originalPrompt = '';
+    let pendingData = null;
+    let apiKey = localStorage.getItem('promptqr_api_key') || '';
 
     // ── AI config ──────────────────────────────────────────────
+    // ?q= auto-submits on Claude; pre-fills on ChatGPT & Gemini
     const AI_CONFIG = {
       claude: {
         name: 'Claude',
@@ -439,6 +533,7 @@
 
     function showView(name) {
       $('view-form').classList.toggle('hidden', name !== 'form');
+      $('view-refine').classList.toggle('hidden', name !== 'refine');
       $('view-result').classList.toggle('hidden', name !== 'result');
     }
 
@@ -535,8 +630,93 @@
     addCounter('context', 'context-count', 400);
     addCounter('instructions', 'instr-count', 250);
 
+    // ── API Key management ─────────────────────────────────────
+    function updateApiKeyUI() {
+      const hasKey = !!apiKey;
+      $('api-key-indicator').textContent = hasKey ? '●' : '○';
+      $('api-key-indicator').style.color = hasKey ? '#8b5cf6' : '';
+      $('submit-btn').textContent = hasKey
+        ? 'Refine with AI → Generate QR'
+        : 'Generate QR Code →';
+      if (hasKey) $('api-key-input').value = apiKey;
+    }
+
+    $('api-key-toggle').addEventListener('click', () => {
+      const panel = $('api-key-panel');
+      const open = !panel.classList.contains('hidden');
+      panel.classList.toggle('hidden', open);
+      $('api-key-chevron').textContent = open ? '▸' : '▾';
+    });
+
+    $('api-key-save').addEventListener('click', () => {
+      const val = $('api-key-input').value.trim();
+      if (!val.startsWith('sk-ant-')) {
+        const s = $('api-key-status');
+        s.textContent = 'Key should start with sk-ant-';
+        s.className = 'text-xs mt-2 text-red-400';
+        s.classList.remove('hidden');
+        return;
+      }
+      apiKey = val;
+      localStorage.setItem('promptqr_api_key', apiKey);
+      const s = $('api-key-status');
+      s.textContent = 'Key saved!';
+      s.className = 'text-xs mt-2 text-green-400';
+      s.classList.remove('hidden');
+      setTimeout(() => s.classList.add('hidden'), 2000);
+      updateApiKeyUI();
+    });
+
+    $('api-key-clear').addEventListener('click', () => {
+      apiKey = '';
+      localStorage.removeItem('promptqr_api_key');
+      $('api-key-input').value = '';
+      $('api-key-status').classList.add('hidden');
+      updateApiKeyUI();
+    });
+
+    // Init API key UI on load
+    updateApiKeyUI();
+
+    // ── Claude API: refine prompt ──────────────────────────────
+    async function refineWithClaude(draft, data) {
+      const systemMsg = `You are a prompt engineering expert. Rewrite the user's prompt to be clearer, more specific, and more effective for an AI assistant. Keep the same intent, tone, and format preferences. Return ONLY the improved prompt — no preamble, no explanation, no quotes.`;
+      const userMsg = `Task: ${data.taskType} ${data.topic}
+${data.context.trim() ? `Context: ${data.context.trim()}` : ''}
+${data.tone ? `Tone: ${data.tone}` : ''}
+${data.formats.length ? `Format: ${data.formats.join(', ')}` : ''}
+${data.instructions.trim() ? `Extra instructions: ${data.instructions.trim()}` : ''}
+
+Current draft prompt:
+${draft}`;
+
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 1024,
+          system: systemMsg,
+          messages: [{ role: 'user', content: userMsg }],
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error?.message || `API error ${res.status}`);
+      }
+
+      const json = await res.json();
+      return json.content[0].text.trim();
+    }
+
     // ── Form submission ────────────────────────────────────────
-    $('prompt-form').addEventListener('submit', function(e) {
+    $('prompt-form').addEventListener('submit', async function(e) {
       e.preventDefault();
 
       // Validate
@@ -578,14 +758,60 @@
         instructions: $('instructions').value,
       };
 
-      // Build prompt + URL
-      generatedPrompt = buildPrompt(data);
-      const cfg = AI_CONFIG[selectedAI];
-      generatedURL = cfg.buildURL(generatedPrompt);
+      originalPrompt = buildPrompt(data);
+      pendingData = data;
 
-      // Render result
+      // If API key set, go through refine flow
+      if (apiKey) {
+        showView('refine');
+        $('refine-loading').classList.remove('hidden');
+        $('refine-content').classList.add('hidden');
+        $('refine-error').classList.add('hidden');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+
+        try {
+          const refined = await refineWithClaude(originalPrompt, data);
+          $('refined-prompt-edit').value = refined;
+          $('original-prompt-preview').textContent = originalPrompt;
+          $('refine-loading').classList.add('hidden');
+          $('refine-content').classList.remove('hidden');
+        } catch (err) {
+          $('refine-loading').classList.add('hidden');
+          $('refine-content').classList.remove('hidden');
+          $('refined-prompt-edit').value = originalPrompt;
+          $('original-prompt-preview').textContent = originalPrompt;
+          const errEl = $('refine-error');
+          errEl.textContent = `⚠️ Could not reach Claude API: ${err.message}. Showing original prompt — you can still edit and continue.`;
+          errEl.classList.remove('hidden');
+        }
+        return;
+      }
+
+      // No API key — go straight to QR
+      finalizeAndShowResult(originalPrompt, data);
+    });
+
+    function finalizeAndShowResult(prompt, data) {
+      generatedPrompt = prompt;
+      const cfg = AI_CONFIG[data.ai || selectedAI];
+      generatedURL = cfg.buildURL(generatedPrompt);
       renderResult(data, cfg);
       showView('result');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // ── Refine view actions ────────────────────────────────────
+    $('use-refined-btn').addEventListener('click', () => {
+      const prompt = $('refined-prompt-edit').value.trim() || originalPrompt;
+      finalizeAndShowResult(prompt, pendingData);
+    });
+
+    $('use-original-btn').addEventListener('click', () => {
+      finalizeAndShowResult(originalPrompt, pendingData);
+    });
+
+    $('refine-back-btn').addEventListener('click', () => {
+      showView('form');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
 
@@ -710,6 +936,8 @@
     $('new-qr-btn').addEventListener('click', () => {
       $('prompt-form').reset();
       selectedAI = null;
+      pendingData = null;
+      originalPrompt = '';
       // Reset card styles
       document.querySelectorAll('[data-ai]').forEach(c => {
         c.classList.remove('selected');
