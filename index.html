@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Prompt QR Generator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+    * { font-family: 'Inter', sans-serif; }
+
+    body {
+      background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%);
+      min-height: 100vh;
+    }
+
+    /* AI card hover */
+    .ai-card {
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+    .ai-card:hover { transform: translateY(-2px); }
+    .ai-card.selected { outline: 2px solid; }
+
+    /* Animated gradient border on focus */
+    .glow-input:focus {
+      box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.5);
+      outline: none;
+    }
+
+    /* Step indicator */
+    .step-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      transition: all 0.3s ease;
+    }
+
+    /* Smooth view transitions */
+    .view { transition: opacity 0.3s ease; }
+    .view.hidden { display: none; }
+
+    /* QR code container */
+    #qr-canvas-wrapper canvas,
+    #qr-canvas-wrapper img {
+      border-radius: 12px;
+    }
+
+    /* Tag pill style */
+    .tag-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+
+    /* Checkbox / radio custom */
+    .format-check:checked + label {
+      background: rgba(139, 92, 246, 0.2);
+      border-color: #8b5cf6;
+      color: #c4b5fd;
+    }
+    .format-check + label {
+      transition: all 0.15s ease;
+    }
+
+    /* Scrollbar styling */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.4); border-radius: 3px; }
+
+    /* Pulsing QR animation */
+    @keyframes pulse-ring {
+      0% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.4); }
+      70% { box-shadow: 0 0 0 20px rgba(139, 92, 246, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(139, 92, 246, 0); }
+    }
+    .qr-pulse { animation: pulse-ring 2s ease-out infinite; }
+
+    .char-counter { font-size: 0.7rem; }
+  </style>
+</head>
+<body class="text-white">
+
+  <!-- ── HEADER ─────────────────────────────────────────────── -->
+  <header class="border-b border-white/10 backdrop-blur-sm bg-white/5 sticky top-0 z-50">
+    <div class="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-lg">
+          ⚡
+        </div>
+        <span class="font-bold text-lg tracking-tight">PromptQR</span>
+      </div>
+      <span class="text-xs text-white/40 hidden sm:block">Generate · Share · Prompt</span>
+    </div>
+  </header>
+
+  <!-- ── FORM VIEW ───────────────────────────────────────────── -->
+  <div id="view-form" class="view max-w-3xl mx-auto px-4 py-8">
+
+    <!-- Hero -->
+    <div class="text-center mb-8">
+      <h1 class="text-3xl sm:text-4xl font-extrabold mb-2 bg-gradient-to-r from-violet-300 via-purple-300 to-indigo-300 bg-clip-text text-transparent">
+        Build Your AI Prompt QR
+      </h1>
+      <p class="text-white/50 text-sm sm:text-base">
+        Fill out the form → get a QR code → scan to open your AI with the prompt ready.
+      </p>
+    </div>
+
+    <form id="prompt-form" novalidate>
+
+      <!-- ── STEP 1: Choose AI ─────────────────────────────── -->
+      <section class="mb-6">
+        <label class="block text-xs font-semibold text-white/40 uppercase tracking-widest mb-3">
+          Step 1 — Choose your AI
+        </label>
+        <div class="grid grid-cols-3 gap-3">
+
+          <!-- Claude -->
+          <label for="ai-claude">
+            <input type="radio" id="ai-claude" name="ai" value="claude" class="sr-only" required />
+            <div class="ai-card rounded-xl p-4 border border-white/10 bg-white/5 text-center hover:bg-white/8" data-ai="claude" style="--ai-color:#e57449">
+              <div class="text-3xl mb-2">🟠</div>
+              <div class="font-semibold text-sm">Claude</div>
+              <div class="text-xs text-white/40 mt-0.5">Anthropic</div>
+            </div>
+          </label>
+
+          <!-- ChatGPT -->
+          <label for="ai-chatgpt">
+            <input type="radio" id="ai-chatgpt" name="ai" value="chatgpt" class="sr-only" />
+            <div class="ai-card rounded-xl p-4 border border-white/10 bg-white/5 text-center hover:bg-white/8" data-ai="chatgpt" style="--ai-color:#10a37f">
+              <div class="text-3xl mb-2">🟢</div>
+              <div class="font-semibold text-sm">ChatGPT</div>
+              <div class="text-xs text-white/40 mt-0.5">OpenAI</div>
+            </div>
+          </label>
+
+          <!-- Gemini -->
+          <label for="ai-gemini">
+            <input type="radio" id="ai-gemini" name="ai" value="gemini" class="sr-only" />
+            <div class="ai-card rounded-xl p-4 border border-white/10 bg-white/5 text-center hover:bg-white/8" data-ai="gemini" style="--ai-color:#4285f4">
+              <div class="text-3xl mb-2">🔵</div>
+              <div class="font-semibold text-sm">Gemini</div>
+              <div class="text-xs text-white/40 mt-0.5">Google</div>
+            </div>
+          </label>
+
+        </div>
+        <p id="err-ai" class="text-red-400 text-xs mt-2 hidden">Please choose an AI platform.</p>
+      </section>
+
+      <!-- ── STEP 2: Task Type ──────────────────────────────── -->
+      <section class="mb-6">
+        <label for="task-type" class="block text-xs font-semibold text-white/40 uppercase tracking-widest mb-3">
+          Step 2 — What do you want the AI to do?
+        </label>
+        <select id="task-type" name="task_type" required
+          class="glow-input w-full rounded-xl px-4 py-3 bg-white/5 border border-white/10 text-white focus:border-violet-500 appearance-none cursor-pointer">
+          <option value="" disabled selected>Select a task type…</option>
+          <optgroup label="Create">
+            <option value="Write">✍️  Write / Create</option>
+            <option value="Brainstorm ideas for">💡  Brainstorm</option>
+            <option value="Design">🎨  Design</option>
+          </optgroup>
+          <optgroup label="Understand">
+            <option value="Explain">📖  Explain / Teach</option>
+            <option value="Summarize">📝  Summarize</option>
+            <option value="Translate">🌐  Translate</option>
+          </optgroup>
+          <optgroup label="Evaluate">
+            <option value="Analyze">🔍  Analyze / Review</option>
+            <option value="Compare">⚖️  Compare</option>
+            <option value="Debug and fix">🐛  Debug / Fix</option>
+          </optgroup>
+          <optgroup label="Other">
+            <option value="Help me with">🤝  Help me with…</option>
+            <option value="Act as an expert and answer questions about">🧑‍💼  Expert Q&A</option>
+          </optgroup>
+        </select>
+        <p id="err-task" class="text-red-400 text-xs mt-2 hidden">Please select a task type.</p>
+      </section>
+
+      <!-- ── STEP 3: Topic / Subject ────────────────────────── -->
+      <section class="mb-6">
+        <label for="topic" class="block text-xs font-semibold text-white/40 uppercase tracking-widest mb-3">
+          Step 3 — Topic / Subject
+          <span class="text-red-400">*</span>
+        </label>
+        <input type="text" id="topic" name="topic" required maxlength="120"
+          placeholder="e.g. 'a React hook for debouncing' or 'climate change impact on agriculture'"
+          class="glow-input w-full rounded-xl px-4 py-3 bg-white/5 border border-white/10 text-white placeholder-white/25 focus:border-violet-500" />
+        <div class="flex justify-between mt-1">
+          <p id="err-topic" class="text-red-400 text-xs hidden">Please enter a topic.</p>
+          <span id="topic-count" class="char-counter text-white/30 ml-auto">0 / 120</span>
+        </div>
+      </section>
+
+      <!-- ── STEP 4: Context ────────────────────────────────── -->
+      <section class="mb-6">
+        <label for="context" class="block text-xs font-semibold text-white/40 uppercase tracking-widest mb-3">
+          Step 4 — Context &amp; Background
+          <span class="text-white/30 font-normal normal-case tracking-normal ml-1">(optional)</span>
+        </label>
+        <textarea id="context" name="context" rows="3" maxlength="400"
+          placeholder="Any background info the AI should know. E.g. audience, constraints, prior knowledge…"
+          class="glow-input w-full rounded-xl px-4 py-3 bg-white/5 border border-white/10 text-white placeholder-white/25 focus:border-violet-500 resize-none"></textarea>
+        <div class="flex justify-end mt-1">
+          <span id="context-count" class="char-counter text-white/30">0 / 400</span>
+        </div>
+      </section>
+
+      <!-- ── STEP 5: Tone + Format (side by side) ───────────── -->
+      <div class="grid sm:grid-cols-2 gap-6 mb-6">
+
+        <!-- Tone -->
+        <section>
+          <label class="block text-xs font-semibold text-white/40 uppercase tracking-widest mb-3">
+            Tone
+            <span class="text-white/30 font-normal normal-case tracking-normal ml-1">(optional)</span>
+          </label>
+          <div class="grid grid-cols-2 gap-2">
+            <label for="tone-professional" class="cursor-pointer">
+              <input type="radio" id="tone-professional" name="tone" value="professional" class="sr-only" />
+              <div class="tone-card rounded-lg px-3 py-2 border border-white/10 bg-white/5 text-center text-sm hover:bg-white/8 transition-all">
+                💼 Professional
+              </div>
+            </label>
+            <label for="tone-casual" class="cursor-pointer">
+              <input type="radio" id="tone-casual" name="tone" value="casual" class="sr-only" />
+              <div class="tone-card rounded-lg px-3 py-2 border border-white/10 bg-white/5 text-center text-sm hover:bg-white/8 transition-all">
+                😊 Casual
+              </div>
+            </label>
+            <label for="tone-academic" class="cursor-pointer">
+              <input type="radio" id="tone-academic" name="tone" value="academic" class="sr-only" />
+              <div class="tone-card rounded-lg px-3 py-2 border border-white/10 bg-white/5 text-center text-sm hover:bg-white/8 transition-all">
+                🎓 Academic
+              </div>
+            </label>
+            <label for="tone-creative" class="cursor-pointer">
+              <input type="radio" id="tone-creative" name="tone" value="creative" class="sr-only" />
+              <div class="tone-card rounded-lg px-3 py-2 border border-white/10 bg-white/5 text-center text-sm hover:bg-white/8 transition-all">
+                🎨 Creative
+              </div>
+            </label>
+          </div>
+        </section>
+
+        <!-- Output Format -->
+        <section>
+          <label class="block text-xs font-semibold text-white/40 uppercase tracking-widest mb-3">
+            Output Format
+            <span class="text-white/30 font-normal normal-case tracking-normal ml-1">(pick any)</span>
+          </label>
+          <div class="grid grid-cols-2 gap-2">
+            <label for="fmt-bullets" class="cursor-pointer">
+              <input type="checkbox" id="fmt-bullets" name="format" value="bullet points" class="format-check sr-only" />
+              <div class="fmt-card rounded-lg px-3 py-2 border border-white/10 bg-white/5 text-center text-sm hover:bg-white/8 transition-all">
+                • Bullets
+              </div>
+            </label>
+            <label for="fmt-numbered" class="cursor-pointer">
+              <input type="checkbox" id="fmt-numbered" name="format" value="a numbered list" class="format-check sr-only" />
+              <div class="fmt-card rounded-lg px-3 py-2 border border-white/10 bg-white/5 text-center text-sm hover:bg-white/8 transition-all">
+                1. Numbered
+              </div>
+            </label>
+            <label for="fmt-steps" class="cursor-pointer">
+              <input type="checkbox" id="fmt-steps" name="format" value="step-by-step instructions" class="format-check sr-only" />
+              <div class="fmt-card rounded-lg px-3 py-2 border border-white/10 bg-white/5 text-center text-sm hover:bg-white/8 transition-all">
+                🔢 Steps
+              </div>
+            </label>
+            <label for="fmt-code" class="cursor-pointer">
+              <input type="checkbox" id="fmt-code" name="format" value="code with explanations" class="format-check sr-only" />
+              <div class="fmt-card rounded-lg px-3 py-2 border border-white/10 bg-white/5 text-center text-sm hover:bg-white/8 transition-all">
+                &lt;/&gt; Code
+              </div>
+            </label>
+            <label for="fmt-table" class="cursor-pointer">
+              <input type="checkbox" id="fmt-table" name="format" value="a table" class="format-check sr-only" />
+              <div class="fmt-card rounded-lg px-3 py-2 border border-white/10 bg-white/5 text-center text-sm hover:bg-white/8 transition-all">
+                📊 Table
+              </div>
+            </label>
+            <label for="fmt-para" class="cursor-pointer">
+              <input type="checkbox" id="fmt-para" name="format" value="paragraphs" class="format-check sr-only" />
+              <div class="fmt-card rounded-lg px-3 py-2 border border-white/10 bg-white/5 text-center text-sm hover:bg-white/8 transition-all">
+                ¶ Paragraphs
+              </div>
+            </label>
+          </div>
+        </section>
+
+      </div>
+
+      <!-- ── STEP 6: Additional Instructions ───────────────── -->
+      <section class="mb-8">
+        <label for="instructions" class="block text-xs font-semibold text-white/40 uppercase tracking-widest mb-3">
+          Step 6 — Additional Instructions
+          <span class="text-white/30 font-normal normal-case tracking-normal ml-1">(optional)</span>
+        </label>
+        <textarea id="instructions" name="instructions" rows="2" maxlength="250"
+          placeholder="e.g. 'Keep it under 300 words', 'Use simple language', 'Include examples'…"
+          class="glow-input w-full rounded-xl px-4 py-3 bg-white/5 border border-white/10 text-white placeholder-white/25 focus:border-violet-500 resize-none"></textarea>
+        <div class="flex justify-end mt-1">
+          <span id="instr-count" class="char-counter text-white/30">0 / 250</span>
+        </div>
+      </section>
+
+      <!-- Submit -->
+      <button type="submit" id="submit-btn"
+        class="w-full py-4 rounded-xl font-bold text-base bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 active:scale-95 transition-all shadow-lg shadow-violet-900/40">
+        Generate QR Code →
+      </button>
+
+    </form>
+  </div>
+
+  <!-- ── RESULT VIEW ─────────────────────────────────────────── -->
+  <div id="view-result" class="view hidden max-w-3xl mx-auto px-4 py-8">
+
+    <!-- Back button -->
+    <button id="back-btn" class="flex items-center gap-2 text-sm text-white/50 hover:text-white mb-6 transition-colors">
+      ← Back to form
+    </button>
+
+    <div class="grid sm:grid-cols-2 gap-6">
+
+      <!-- QR Code card -->
+      <div class="rounded-2xl border border-white/10 bg-white/5 p-6 flex flex-col items-center">
+        <div class="text-xs font-semibold text-white/40 uppercase tracking-widest mb-4">Your QR Code</div>
+
+        <!-- QR wrapper with padding so QR looks clean -->
+        <div class="qr-pulse rounded-2xl bg-white p-4 mb-4" id="qr-canvas-wrapper">
+          <!-- QR canvas injected here -->
+        </div>
+
+        <p class="text-xs text-white/40 text-center mb-4">
+          Scan to open <span id="result-ai-name" class="text-white/70 font-semibold"></span> with your prompt
+        </p>
+
+        <!-- Download + Copy URL buttons -->
+        <div class="flex gap-2 w-full">
+          <button id="download-btn"
+            class="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-violet-600 hover:bg-violet-500 active:scale-95 transition-all">
+            ⬇ Download
+          </button>
+          <button id="copy-url-btn"
+            class="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-white/10 hover:bg-white/20 active:scale-95 transition-all">
+            🔗 Copy URL
+          </button>
+        </div>
+      </div>
+
+      <!-- Prompt preview card -->
+      <div class="rounded-2xl border border-white/10 bg-white/5 p-6 flex flex-col">
+        <div class="text-xs font-semibold text-white/40 uppercase tracking-widest mb-4">Prompt Preview</div>
+
+        <!-- Tags row -->
+        <div id="result-tags" class="flex flex-wrap gap-2 mb-4"></div>
+
+        <!-- Prompt text -->
+        <div id="result-prompt"
+          class="flex-1 text-sm text-white/80 leading-relaxed bg-black/20 rounded-xl p-4 overflow-y-auto max-h-48 mb-4 whitespace-pre-wrap font-mono">
+        </div>
+
+        <button id="copy-prompt-btn"
+          class="w-full py-2.5 rounded-xl text-sm font-semibold bg-white/10 hover:bg-white/20 active:scale-95 transition-all">
+          📋 Copy Prompt
+        </button>
+      </div>
+
+    </div>
+
+    <!-- Open directly buttons -->
+    <div class="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5">
+      <p class="text-xs text-white/40 uppercase tracking-widest font-semibold mb-3">Open directly in browser</p>
+      <div class="flex flex-wrap gap-3">
+        <a id="open-ai-link" href="#" target="_blank" rel="noopener"
+          class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-indigo-600 hover:opacity-90 transition-opacity">
+          <span id="open-ai-icon">🤖</span>
+          <span id="open-ai-label">Open in AI</span>
+          ↗
+        </a>
+        <button id="new-qr-btn"
+          class="px-4 py-2 rounded-xl text-sm font-semibold bg-white/10 hover:bg-white/20 transition-all">
+          + Create another
+        </button>
+      </div>
+    </div>
+
+    <!-- QR URL length warning -->
+    <div id="url-warning" class="hidden mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+      ⚠️ Your prompt is quite long. Some QR scanners may have trouble reading it. Consider shortening your context or instructions.
+    </div>
+
+  </div>
+
+  <!-- ── SCRIPTS ──────────────────────────────────────────────── -->
+  <script>
+  (function () {
+
+    // ── State ──────────────────────────────────────────────────
+    let selectedAI = null;
+    let generatedURL = '';
+    let generatedPrompt = '';
+
+    // ── AI config ──────────────────────────────────────────────
+    const AI_CONFIG = {
+      claude: {
+        name: 'Claude',
+        color: '#e57449',
+        icon: '🟠',
+        buildURL: (prompt) => `https://claude.ai/new?q=${encodeURIComponent(prompt)}`,
+      },
+      chatgpt: {
+        name: 'ChatGPT',
+        color: '#10a37f',
+        icon: '🟢',
+        buildURL: (prompt) => `https://chatgpt.com/?q=${encodeURIComponent(prompt)}`,
+      },
+      gemini: {
+        name: 'Gemini',
+        color: '#4285f4',
+        icon: '🔵',
+        buildURL: (prompt) => `https://gemini.google.com/app?q=${encodeURIComponent(prompt)}`,
+      },
+    };
+
+    // ── Helpers ────────────────────────────────────────────────
+    function $(id) { return document.getElementById(id); }
+
+    function showView(name) {
+      $('view-form').classList.toggle('hidden', name !== 'form');
+      $('view-result').classList.toggle('hidden', name !== 'result');
+    }
+
+    function buildPrompt(data) {
+      const parts = [];
+
+      // Core instruction
+      parts.push(`${data.taskType} ${data.topic}.`);
+
+      // Context
+      if (data.context.trim()) {
+        parts.push(`\nContext: ${data.context.trim()}`);
+      }
+
+      // Tone
+      if (data.tone) {
+        parts.push(`\nTone: Please respond in a ${data.tone} tone.`);
+      }
+
+      // Format
+      if (data.formats.length > 0) {
+        const fmtStr = data.formats.length === 1
+          ? data.formats[0]
+          : data.formats.slice(0, -1).join(', ') + ' and ' + data.formats[data.formats.length - 1];
+        parts.push(`\nFormat: Structure your response as ${fmtStr}.`);
+      }
+
+      // Extra instructions
+      if (data.instructions.trim()) {
+        parts.push(`\nAdditional instructions: ${data.instructions.trim()}`);
+      }
+
+      return parts.join('');
+    }
+
+    // ── AI card selection ──────────────────────────────────────
+    document.querySelectorAll('[data-ai]').forEach(card => {
+      card.closest('label').addEventListener('click', () => {
+        const ai = card.dataset.ai;
+        selectedAI = ai;
+        // Update card styles
+        document.querySelectorAll('[data-ai]').forEach(c => {
+          c.classList.remove('selected', 'border-violet-400', 'bg-white/10');
+          c.classList.add('border-white/10', 'bg-white/5');
+        });
+        card.classList.add('selected', 'bg-white/10');
+        card.classList.remove('border-white/10', 'bg-white/5');
+        // Color the border per AI
+        const cfg = AI_CONFIG[ai];
+        card.style.outlineColor = cfg.color;
+        card.style.borderColor = cfg.color;
+        // Hide error
+        $('err-ai').classList.add('hidden');
+      });
+    });
+
+    // ── Tone card selection ────────────────────────────────────
+    document.querySelectorAll('[name="tone"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        document.querySelectorAll('.tone-card').forEach(c => {
+          c.classList.remove('border-violet-400', 'bg-violet-500/20', 'text-violet-200');
+          c.classList.add('border-white/10', 'bg-white/5');
+        });
+        const card = radio.closest('label').querySelector('.tone-card');
+        card.classList.add('border-violet-400', 'bg-violet-500/20', 'text-violet-200');
+        card.classList.remove('border-white/10', 'bg-white/5');
+      });
+    });
+
+    // ── Format checkbox selection ──────────────────────────────
+    document.querySelectorAll('.format-check').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const card = cb.closest('label').querySelector('.fmt-card');
+        if (cb.checked) {
+          card.classList.add('border-violet-400', 'bg-violet-500/20', 'text-violet-200');
+          card.classList.remove('border-white/10', 'bg-white/5');
+        } else {
+          card.classList.remove('border-violet-400', 'bg-violet-500/20', 'text-violet-200');
+          card.classList.add('border-white/10', 'bg-white/5');
+        }
+      });
+    });
+
+    // ── Char counters ──────────────────────────────────────────
+    function addCounter(inputId, counterId, max) {
+      const el = $(inputId);
+      const ct = $(counterId);
+      el.addEventListener('input', () => {
+        ct.textContent = `${el.value.length} / ${max}`;
+        ct.classList.toggle('text-amber-400', el.value.length > max * 0.85);
+      });
+    }
+    addCounter('topic', 'topic-count', 120);
+    addCounter('context', 'context-count', 400);
+    addCounter('instructions', 'instr-count', 250);
+
+    // ── Form submission ────────────────────────────────────────
+    $('prompt-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+
+      // Validate
+      let valid = true;
+
+      if (!selectedAI) {
+        $('err-ai').classList.remove('hidden');
+        valid = false;
+      }
+      const taskType = $('task-type').value;
+      if (!taskType) {
+        $('err-task').classList.remove('hidden');
+        valid = false;
+      } else {
+        $('err-task').classList.add('hidden');
+      }
+      const topic = $('topic').value.trim();
+      if (!topic) {
+        $('err-topic').classList.remove('hidden');
+        $('topic').focus();
+        valid = false;
+      } else {
+        $('err-topic').classList.add('hidden');
+      }
+
+      if (!valid) return;
+
+      // Collect data
+      const toneEl = document.querySelector('[name="tone"]:checked');
+      const formats = [...document.querySelectorAll('.format-check:checked')].map(c => c.value);
+
+      const data = {
+        ai: selectedAI,
+        taskType,
+        topic,
+        context: $('context').value,
+        tone: toneEl ? toneEl.value : '',
+        formats,
+        instructions: $('instructions').value,
+      };
+
+      // Build prompt + URL
+      generatedPrompt = buildPrompt(data);
+      const cfg = AI_CONFIG[selectedAI];
+      generatedURL = cfg.buildURL(generatedPrompt);
+
+      // Render result
+      renderResult(data, cfg);
+      showView('result');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    // ── Render result view ─────────────────────────────────────
+    function renderResult(data, cfg) {
+      // AI name
+      $('result-ai-name').textContent = cfg.name;
+
+      // Tags
+      const tagsEl = $('result-tags');
+      tagsEl.innerHTML = '';
+      const tags = [
+        { label: cfg.icon + ' ' + cfg.name, color: 'rgba(255,255,255,0.1)', text: 'text-white/70' },
+        { label: data.taskType, color: 'rgba(139,92,246,0.2)', text: 'text-violet-300' },
+      ];
+      if (data.tone) tags.push({ label: '🗣 ' + cap(data.tone), color: 'rgba(16,163,127,0.15)', text: 'text-emerald-400' });
+      if (data.formats.length) tags.push({ label: '📄 ' + data.formats.length + ' format' + (data.formats.length > 1 ? 's' : ''), color: 'rgba(245,158,11,0.15)', text: 'text-amber-400' });
+      tags.forEach(t => {
+        const span = document.createElement('span');
+        span.className = `tag-pill ${t.text}`;
+        span.style.background = t.color;
+        span.style.border = '1px solid rgba(255,255,255,0.08)';
+        span.textContent = t.label;
+        tagsEl.appendChild(span);
+      });
+
+      // Prompt text
+      $('result-prompt').textContent = generatedPrompt;
+
+      // Open link
+      $('open-ai-link').href = generatedURL;
+      $('open-ai-icon').textContent = cfg.icon;
+      $('open-ai-label').textContent = `Open in ${cfg.name}`;
+
+      // URL length warning (> 1500 chars = potentially large QR)
+      $('url-warning').classList.toggle('hidden', generatedURL.length <= 1500);
+
+      // Generate QR
+      generateQR(generatedURL);
+    }
+
+    function cap(str) { return str.charAt(0).toUpperCase() + str.slice(1); }
+
+    // ── QR Generation ──────────────────────────────────────────
+    function generateQR(url) {
+      const wrapper = $('qr-canvas-wrapper');
+      wrapper.innerHTML = '';
+      try {
+        new QRCode(wrapper, {
+          text: url,
+          width: 220,
+          height: 220,
+          colorDark: '#000000',
+          colorLight: '#ffffff',
+          correctLevel: QRCode.CorrectLevel.M,
+        });
+      } catch (err) {
+        wrapper.innerHTML = '<p class="text-red-400 text-xs p-4 text-center">QR too large. Shorten your prompt.</p>';
+      }
+    }
+
+    // ── Download QR ────────────────────────────────────────────
+    $('download-btn').addEventListener('click', () => {
+      const canvas = $('qr-canvas-wrapper').querySelector('canvas');
+      if (!canvas) {
+        alert('QR code not ready yet.');
+        return;
+      }
+      // Add padding + branding to a new canvas
+      const pad = 24;
+      const labelH = 36;
+      const out = document.createElement('canvas');
+      out.width = canvas.width + pad * 2;
+      out.height = canvas.height + pad * 2 + labelH;
+      const ctx = out.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, out.width, out.height);
+      ctx.drawImage(canvas, pad, pad);
+      // Label
+      ctx.fillStyle = '#111';
+      ctx.font = 'bold 13px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('Scan to open prompt in ' + (AI_CONFIG[selectedAI]?.name || 'AI'), out.width / 2, canvas.height + pad + labelH - 10);
+      const link = document.createElement('a');
+      link.download = `prompt-qr-${selectedAI || 'ai'}.png`;
+      link.href = out.toDataURL('image/png');
+      link.click();
+    });
+
+    // ── Copy URL ───────────────────────────────────────────────
+    $('copy-url-btn').addEventListener('click', () => {
+      navigator.clipboard.writeText(generatedURL).then(() => {
+        const btn = $('copy-url-btn');
+        const orig = btn.textContent;
+        btn.textContent = '✓ Copied!';
+        btn.classList.add('text-green-400');
+        setTimeout(() => { btn.textContent = orig; btn.classList.remove('text-green-400'); }, 2000);
+      }).catch(() => {
+        prompt('Copy this URL:', generatedURL);
+      });
+    });
+
+    // ── Copy Prompt ────────────────────────────────────────────
+    $('copy-prompt-btn').addEventListener('click', () => {
+      navigator.clipboard.writeText(generatedPrompt).then(() => {
+        const btn = $('copy-prompt-btn');
+        const orig = btn.textContent;
+        btn.textContent = '✓ Copied!';
+        btn.classList.add('text-green-400');
+        setTimeout(() => { btn.textContent = orig; btn.classList.remove('text-green-400'); }, 2000);
+      }).catch(() => {
+        prompt('Copy this prompt:', generatedPrompt);
+      });
+    });
+
+    // ── Back / New ─────────────────────────────────────────────
+    $('back-btn').addEventListener('click', () => {
+      showView('form');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    $('new-qr-btn').addEventListener('click', () => {
+      $('prompt-form').reset();
+      selectedAI = null;
+      // Reset card styles
+      document.querySelectorAll('[data-ai]').forEach(c => {
+        c.classList.remove('selected');
+        c.style.outlineColor = '';
+        c.style.borderColor = '';
+        c.classList.add('border-white/10', 'bg-white/5');
+        c.classList.remove('bg-white/10');
+      });
+      // Reset tone cards
+      document.querySelectorAll('.tone-card').forEach(c => {
+        c.classList.remove('border-violet-400', 'bg-violet-500/20', 'text-violet-200');
+        c.classList.add('border-white/10', 'bg-white/5');
+      });
+      // Reset format cards
+      document.querySelectorAll('.fmt-card').forEach(c => {
+        c.classList.remove('border-violet-400', 'bg-violet-500/20', 'text-violet-200');
+        c.classList.add('border-white/10', 'bg-white/5');
+      });
+      // Reset counters
+      ['topic-count','context-count','instr-count'].forEach(id => {
+        $(id).textContent = $(id).textContent.replace(/^\d+/, '0');
+      });
+      showView('form');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+  })();
+  </script>
+
+</body>
+</html>
